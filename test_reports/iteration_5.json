@@ -1,0 +1,30 @@
+{
+  "summary": "Validated the five new feature families: (1) product internal_code/supplier_code + extended search; (2) per-stock barcode uniqueness (409 'Codice già associato a: <name>'); (3) /api/receipts goods-receiving endpoint (adds qty, creates missing location row, skips qty<=0, 400 empty, 404 unknown location/product with no partial-apply, newest-first list, stock-delete cascades); (4) frontend /receiving flow with location chips, product picker, qty stepper, note, confirm → toast + last receipts list, scan modal continuous mode showing '+1 <name>', unknown-code assign/create; (5) Scanner tab manual-code dialog with manual-code-clear and empty-on-reopen, assign-existing on unknown; Product form has internal/supplier code inputs, barcode-clear, barcode-scan-btn fills input; order-export page shows supplier code, PDF buildHtml columns = '#, Cod. fornitore, Descrizione, Cod. interno, Quantità, Unità' with NO 'Giacenza' column. 48/48 backend pytest pass.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stockcount_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py:135 — 'Codice già associato a: <name>' is Italian & matches spec; .strip() on barcode happens inside _ensure_barcode_free and in update_product, but POST path (/products) stores whatever the client sent for barcode (no strip in create). Minor: consider trimming at persistence time to avoid leading/trailing-space collisions.",
+    "server.py:402 create_receipt validates all products first (good: no partial apply), then calls _adjust_location_quantity sequentially; if the loop crashes mid-way (DB error) the earlier updates are not rolled back. Low risk given fast consecutive updates but worth noting – no transactional guarantee across lines.",
+    "receiving.tsx:188 — row shows internal/supplier codes with fallback to 'Giacenza {total_quantity}'. Spec removed 'Giacenza' only from the PDF, not from UI rows – consistent with the request.",
+    "ProductPickerModal picker-search-clear is conditionally rendered (q.length>0). Test must type first; current behaviour is correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stockcount_api.py (added 17 tests: TestInternalSupplierCodes x5, TestBarcodeUniqueness x4, TestReceipts x8)"
+  ],
+  "success_rate": {"backend": "100% (48/48 pytest)", "frontend": "100% of specified flows verified on the mobile web preview at 390×844"},
+  "seed_data_creation": "Created TEST_UI_REC stock with locations Magazzino/Scaffale and two products (TEST_Vite 6x30: barcode 8800000111, IC-VITE, SUP-V1, qty 5; TEST_Dado M8: qty 2). Verified end-to-end /receiving flow (confirm added +1 Vite → qty=6, last receipt visible). Deleted stock at the end (stocks list = ['Negozio','Casa','Materiale elettronico']). Backend tests use TEST_* ephemeral stocks that each clean up via fixture teardown.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Scanner tab on web shows a camera-permission screen; the manual dialog is opened via testID 'manual-only' (NOT 'scanner-manual-btn'). Dialog submit uses testID 'manual-submit', not 'manual-code-submit'. Dialog close is via 'scan-again' only when a product sheet is open; otherwise there is no explicit close. For /receiving tests, 'receiving-qty-{id}' is a testIDPrefix – real elements are '{prefix}-plus', '{prefix}-minus', '{prefix}-value'. picker-search-clear only renders when the query is non-empty. EXPO_PUBLIC_BACKEND_URL is the public URL env var (not EXPO_BACKEND_URL). Direct outbound HTTP from browser-automation is blocked; seed via a bash curl step and pass IDs through /tmp/.",
+  "rca_of_issue": "N/A – all specified behaviours verified."
+}

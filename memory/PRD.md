@@ -42,6 +42,18 @@ Routes (all prefixed with `/api`):
 - Inventory: location chip = edit that location's quantity; multi-location rows show total.
 - Scanner: per-location steppers in result sheet; autofocus, torch, 2x zoom, 1D-only formats, EAN-13/UPC-A leading-zero tolerant lookup.
 
+## Update — Supplier PDF & transfer
+- Product `supplier` field; `/api/suppliers` suggestions; `/order-export` groups reorder list by supplier with editable suggested qty (max(1, min*2 - total)) and exports one PDF per supplier (expo-print + expo-sharing).
+- `POST /api/products/{id}/transfer` moves goods between locations (total unchanged); "Sposta merce" sheet in product detail.
+
+## Update — Receiving, codes, barcode attach
+- Product `internal_code` and `supplier_code`; search matches name/codes/barcode.
+- Barcode unique per stock (409 on conflict).
+- Goods receiving: `/receiving` screen + `POST/GET /api/receipts` (continuous scan, search, per-line qty, note, history).
+- Attach a barcode to an existing product: from scanner "not found" sheet, from receiving, or scan button in product form.
+- Scanner manual field auto-clears and has a clear (X) button.
+- Supplier PDF: no stock column; columns = Cod. fornitore, Descrizione, Cod. interno, Quantità, Unità.
+
 ## Future Enhancements
 - Export reorder list as CSV / email.
 - Historical movements log (audit trail).

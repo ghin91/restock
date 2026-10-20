@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import re
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field
@@ -59,6 +60,9 @@ class Product(BaseModel):
     stock_id: str
     name: str
     barcode: Optional[str] = None
+    supplier: Optional[str] = None
+    internal_code: Optional[str] = None
+    supplier_code: Optional[str] = None
     locations: List[ProductLocation] = []
     min_threshold: int = 5
     unit: str = "pz"
@@ -73,6 +77,9 @@ class ProductCreate(BaseModel):
     stock_id: str
     name: str
     barcode: Optional[str] = None
+    supplier: Optional[str] = None
+    internal_code: Optional[str] = None
+    supplier_code: Optional[str] = None
     locations: List[ProductLocation] = []
     min_threshold: int = 5
     unit: str = "pz"
@@ -83,6 +90,9 @@ class ProductCreate(BaseModel):
 class ProductUpdate(BaseModel):
     name: Optional[str] = None
     barcode: Optional[str] = None
+    supplier: Optional[str] = None
+    internal_code: Optional[str] = None
+    supplier_code: Optional[str] = None
     locations: Optional[List[ProductLocation]] = None
     min_threshold: Optional[int] = None
     unit: Optional[str] = None
@@ -113,6 +123,18 @@ async def _ensure_stock(stock_id: str):
     return s
 
 
+async def _ensure_barcode_free(stock_id: str, barcode: Optional[str], exclude_id: Optional[str] = None):
+    """A barcode can belong to only one product inside the same stock."""
+    if not barcode or not barcode.strip():
+        return
+    query: dict = {"stock_id": stock_id, "barcode": barcode.strip()}
+    if exclude_id:
+        query["id"] = {"$ne": exclude_id}
+    other = await db.products.find_one(query, {"_id": 0, "name": 1})
+    if other:
+        raise HTTPException(status_code=409, detail=f"Codice già associato a: {other['name']}")
+
+
 def _hydrate_product(doc: dict) -> Product:
     locs = doc.get("locations")
     if not isinstance(locs, list) or not locs:
@@ -127,6 +149,9 @@ def _hydrate_product(doc: dict) -> Product:
         "stock_id": doc["stock_id"],
         "name": doc["name"],
         "barcode": doc.get("barcode"),
+        "supplier": (doc.get("supplier") or "").strip() or None,
+        "internal_code": (doc.get("internal_code") or "").strip() or None,
+        "supplier_code": (doc.get("supplier_code") or "").strip() or None,
         "locations": [l.dict() for l in norm],
         "min_threshold": int(doc.get("min_threshold") or 0),
         "unit": doc.get("unit") or "pz",
@@ -177,6 +202,7 @@ async def delete_stock(stock_id: str):
     await _ensure_stock(stock_id)
     await db.products.delete_many({"stock_id": stock_id})
     await db.locations.delete_many({"stock_id": stock_id})
+    await db.receipts.delete_many({"stock_id": stock_id})
     await db.stocks.delete_one({"id": stock_id})
     return {"ok": True}
 
@@ -189,7 +215,8 @@ async def list_products(stock_id: str, location: Optional[str] = None, q: Option
     if location:
         query["locations.location"] = location
     if q:
-        query["name"] = {"$regex": q, "$options": "i"}
+        rx = {"$regex": re.escape(q), "$options": "i"}
+        query["$or"] = [{"name": rx}, {"internal_code": rx}, {"supplier_code": rx}, {"barcode": rx}]
     docs = await db.products.find(query, {"_id": 0}).sort("name", 1).to_list(2000)
     return [_hydrate_product(d) for d in docs]
 
@@ -197,6 +224,7 @@ async def list_products(stock_id: str, location: Optional[str] = None, q: Option
 @api_router.post("/products", response_model=Product)
 async def create_product(payload: ProductCreate):
     await _ensure_stock(payload.stock_id)
+    await _ensure_barcode_free(payload.stock_id, payload.barcode)
     data = payload.dict()
     if not data.get("locations"):
         data["locations"] = [{"location": "Magazzino", "quantity": 0}]
@@ -217,6 +245,11 @@ async def get_product(product_id: str):
 @api_router.patch("/products/{product_id}", response_model=Product)
 async def update_product(product_id: str, payload: ProductUpdate):
     update = {k: v for k, v in payload.dict().items() if v is not None}
+    if update.get("barcode"):
+        update["barcode"] = update["barcode"].strip()
+        current = await db.products.find_one({"id": product_id}, {"_id": 0, "stock_id": 1})
+        if current:
+            await _ensure_barcode_free(current["stock_id"], update["barcode"], exclude_id=product_id)
     if "locations" in update:
         update["locations"] = [
             {"location": (l.get("location") if isinstance(l, dict) else l.location),
@@ -278,6 +311,52 @@ async def change_location_quantity(product_id: str, location_name: str, body: Qu
     return await _adjust_location_quantity(product_id, location_name, body.delta)
 
 
+class TransferBody(BaseModel):
+    from_location: str
+    to_location: str
+    quantity: int
+
+
+@api_router.post("/products/{product_id}/transfer", response_model=Product)
+async def transfer_stock(product_id: str, body: TransferBody):
+    """Move quantity between two locations of the same product (total unchanged)."""
+    if body.quantity <= 0:
+        raise HTTPException(status_code=400, detail="Quantity must be > 0")
+    if body.from_location == body.to_location:
+        raise HTTPException(status_code=400, detail="Source and destination must differ")
+    doc = await db.products.find_one({"id": product_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Product not found")
+    locs = _hydrate_product(doc).dict()["locations"]
+    src = next((l for l in locs if l["location"] == body.from_location), None)
+    if not src:
+        raise HTTPException(status_code=404, detail="Source location not found on this product")
+    if src["quantity"] < body.quantity:
+        raise HTTPException(status_code=400, detail=f"Only {src['quantity']} available in {body.from_location}")
+    dst_known = await db.locations.find_one({"stock_id": doc["stock_id"], "name": body.to_location}, {"_id": 0})
+    dst = next((l for l in locs if l["location"] == body.to_location), None)
+    if not dst and not dst_known:
+        raise HTTPException(status_code=404, detail="Destination location not found in this stock")
+    src["quantity"] -= body.quantity
+    if dst:
+        dst["quantity"] += body.quantity
+    else:
+        locs.append({"location": body.to_location, "quantity": body.quantity})
+    await db.products.update_one(
+        {"id": product_id},
+        {"$set": {"locations": locs, "updated_at": now_iso()}},
+    )
+    doc["locations"] = locs
+    return _hydrate_product(doc)
+
+
+@api_router.get("/suppliers", response_model=List[str])
+async def list_suppliers(stock_id: str):
+    await _ensure_stock(stock_id)
+    names = await db.products.distinct("supplier", {"stock_id": stock_id})
+    return sorted({n.strip() for n in names if isinstance(n, str) and n.strip()}, key=str.lower)
+
+
 @api_router.get("/products/barcode/{code}", response_model=Product)
 async def get_by_barcode(code: str, stock_id: str):
     await _ensure_stock(stock_id)
@@ -288,6 +367,71 @@ async def get_by_barcode(code: str, stock_id: str):
     if not doc:
         raise HTTPException(status_code=404, detail="Product not found")
     return _hydrate_product(doc)
+
+
+# ---------- Receipts (carico magazzino) ----------
+class ReceiptItemIn(BaseModel):
+    product_id: str
+    quantity: int
+
+
+class ReceiptCreate(BaseModel):
+    stock_id: str
+    location: str
+    note: Optional[str] = None
+    items: List[ReceiptItemIn]
+
+
+class ReceiptItem(BaseModel):
+    product_id: str
+    name: str
+    quantity: int
+
+
+class Receipt(BaseModel):
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    stock_id: str
+    location: str
+    note: Optional[str] = None
+    items: List[ReceiptItem]
+    total_pieces: int
+    created_at: str = Field(default_factory=now_iso)
+
+
+@api_router.post("/receipts", response_model=Receipt)
+async def create_receipt(payload: ReceiptCreate):
+    await _ensure_stock(payload.stock_id)
+    loc = await db.locations.find_one({"stock_id": payload.stock_id, "name": payload.location}, {"_id": 0})
+    if not loc:
+        raise HTTPException(status_code=404, detail="Location not found in this stock")
+    items = [i for i in payload.items if i.quantity > 0]
+    if not items:
+        raise HTTPException(status_code=400, detail="No items to load")
+    # Validate all products first so a bad line doesn't leave a half-applied load.
+    names: dict = {}
+    for i in items:
+        doc = await db.products.find_one({"id": i.product_id, "stock_id": payload.stock_id}, {"_id": 0, "name": 1})
+        if not doc:
+            raise HTTPException(status_code=404, detail=f"Product {i.product_id} not found in this stock")
+        names[i.product_id] = doc["name"]
+    for i in items:
+        await _adjust_location_quantity(i.product_id, payload.location, i.quantity)
+    receipt = Receipt(
+        stock_id=payload.stock_id,
+        location=payload.location,
+        note=(payload.note or "").strip() or None,
+        items=[ReceiptItem(product_id=i.product_id, name=names[i.product_id], quantity=i.quantity) for i in items],
+        total_pieces=sum(i.quantity for i in items),
+    )
+    await db.receipts.insert_one(receipt.dict())
+    return receipt
+
+
+@api_router.get("/receipts", response_model=List[Receipt])
+async def list_receipts(stock_id: str, limit: int = 20):
+    await _ensure_stock(stock_id)
+    docs = await db.receipts.find({"stock_id": stock_id}, {"_id": 0}).sort("created_at", -1).to_list(min(limit, 100))
+    return [Receipt(**d) for d in docs]
 
 
 # ---------- Reorder ----------

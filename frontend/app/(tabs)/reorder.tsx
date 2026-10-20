@@ -1,5 +1,5 @@
 import React from "react";
-import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Share, Platform } from "react-native";
+import { View, Text, StyleSheet, FlatList, Pressable, ActivityIndicator, Share } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -74,10 +74,16 @@ export default function Reorder() {
             showsVerticalScrollIndicator={false}
           />
           <View style={[styles.footer, { paddingBottom: insets.bottom + spacing.md }]}>
-            <Pressable testID="share-list-btn" onPress={share} style={styles.cta}>
-              <Icon name="share-variant" size={20} color={colors.onBrandPrimary} />
-              <Text style={styles.ctaText}>Condividi lista</Text>
-            </Pressable>
+            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              <Pressable testID="share-list-btn" onPress={share} style={styles.ctaSecondary}>
+                <Icon name="share-variant" size={20} color={colors.onSurface} />
+                <Text style={styles.ctaSecondaryText}>Condividi</Text>
+              </Pressable>
+              <Pressable testID="order-pdf-btn" onPress={() => router.push("/order-export" as any)} style={[styles.cta, { flex: 1 }]}>
+                <Icon name="file-pdf-box" size={20} color={colors.onBrandPrimary} />
+                <Text style={styles.ctaText}>Ordini PDF fornitori</Text>
+              </Pressable>
+            </View>
           </View>
         </>
       )}
@@ -158,4 +164,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandPrimary, paddingVertical: spacing.md, borderRadius: radius.md,
   },
   ctaText: { color: colors.onBrandPrimary, fontWeight: "800", fontSize: 15 },
+  ctaSecondary: {
+    flexDirection: "row", gap: spacing.xs, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: spacing.md, borderRadius: radius.md,
+    backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
+  },
+  ctaSecondaryText: { color: colors.onSurface, fontWeight: "700" },
 });

@@ -10,6 +10,8 @@ import Icon from "@react-native-vector-icons/material-design-icons";
 import { api, Product } from "@/src/api";
 import { colors, radius, spacing } from "@/src/theme";
 import { useActiveStock } from "@/src/stock-context";
+import { TransferModal } from "@/src/components/TransferModal";
+import { BarcodeScanModal } from "@/src/components/BarcodeScanModal";
 
 export default function ProductDetails() {
   const { id, barcode: initialBarcode } = useLocalSearchParams<{ id: string; barcode?: string }>();
@@ -29,6 +31,13 @@ export default function ProductDetails() {
     queryFn: () => api.listLocations(activeStock!.id),
     enabled: !!activeStock,
   });
+  const suppliers = useQuery({
+    queryKey: ["suppliers", activeStock?.id],
+    queryFn: () => api.listSuppliers(activeStock!.id),
+    enabled: !!activeStock,
+  });
+  const [transferOpen, setTransferOpen] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
 
   const [form, setForm] = useState<Partial<Product>>({
     name: "",
@@ -86,6 +95,9 @@ export default function ProductDetails() {
           stock_id: activeStock!.id,
           name: form.name!.trim(),
           barcode: form.barcode || undefined,
+          supplier: form.supplier?.trim() || undefined,
+          internal_code: form.internal_code?.trim() || undefined,
+          supplier_code: form.supplier_code?.trim() || undefined,
           locations: rows,
           min_threshold: Number(form.min_threshold) || 0,
           unit: form.unit || "pz",
@@ -95,6 +107,9 @@ export default function ProductDetails() {
         await api.updateProduct(id as string, {
           name: form.name,
           barcode: form.barcode ?? "",
+          supplier: form.supplier?.trim() ?? "",
+          internal_code: form.internal_code?.trim() ?? "",
+          supplier_code: form.supplier_code?.trim() ?? "",
           locations: rows,
           min_threshold: Number(form.min_threshold) || 0,
           unit: form.unit,
@@ -105,6 +120,7 @@ export default function ProductDetails() {
       qc.invalidateQueries({ queryKey: ["stats"] });
       qc.invalidateQueries({ queryKey: ["reorder"] });
       qc.invalidateQueries({ queryKey: ["product", id] });
+      qc.invalidateQueries({ queryKey: ["suppliers"] });
       if (router.canGoBack()) router.back();
       else router.replace("/(tabs)/inventory" as any);
     } catch (e: any) {
@@ -163,15 +179,81 @@ export default function ProductDetails() {
         </Field>
 
         <Field label="Codice a barre">
+          <View style={styles.barcodeRow}>
+            <View style={[styles.input, styles.barcodeInputWrap]}>
+              <TextInput
+                testID="barcode-input"
+                value={form.barcode ?? ""}
+                onChangeText={(v) => set("barcode", v)}
+                placeholder="es. 8001234500011"
+                placeholderTextColor={colors.muted}
+                keyboardType="number-pad"
+                style={styles.barcodeInput}
+              />
+              {!!form.barcode && (
+                <Pressable testID="barcode-clear" onPress={() => set("barcode", "")} hitSlop={8}>
+                  <Icon name="close-circle" size={20} color={colors.muted} />
+                </Pressable>
+              )}
+            </View>
+            <Pressable testID="barcode-scan-btn" onPress={() => setScanOpen(true)} style={styles.scanBtn}>
+              <Icon name="barcode-scan" size={22} color={colors.onBrandPrimary} />
+            </Pressable>
+          </View>
+        </Field>
+
+        <View style={{ flexDirection: "row", gap: spacing.md }}>
+          <View style={{ flex: 1 }}>
+            <Field label="Codice interno">
+              <TextInput
+                testID="internal-code-input"
+                value={form.internal_code ?? ""}
+                onChangeText={(v) => set("internal_code", v)}
+                placeholder="es. ART-0012"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="characters"
+                style={styles.input}
+              />
+            </Field>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Field label="Codice fornitore">
+              <TextInput
+                testID="supplier-code-input"
+                value={form.supplier_code ?? ""}
+                onChangeText={(v) => set("supplier_code", v)}
+                placeholder="es. RS-4471"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="characters"
+                style={styles.input}
+              />
+            </Field>
+          </View>
+        </View>
+
+        <Field label="Fornitore">
           <TextInput
-            testID="barcode-input"
-            value={form.barcode ?? ""}
-            onChangeText={(v) => set("barcode", v)}
-            placeholder="es. 8001234500011"
+            testID="supplier-input"
+            value={form.supplier ?? ""}
+            onChangeText={(v) => set("supplier", v)}
+            placeholder="es. Rossi Distribuzione"
             placeholderTextColor={colors.muted}
-            keyboardType="number-pad"
             style={styles.input}
           />
+          {(suppliers.data?.length ?? 0) > 0 && (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.supChips}>
+              {suppliers.data!.map((s) => (
+                <Pressable
+                  key={s}
+                  testID={`supplier-chip-${s}`}
+                  onPress={() => set("supplier", s)}
+                  style={[styles.supChip, form.supplier === s && styles.supChipActive]}
+                >
+                  <Text style={[styles.supChipText, form.supplier === s && styles.supChipTextActive]}>{s}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
         </Field>
 
         <Field label="Ubicazioni e disponibilità">
@@ -204,6 +286,12 @@ export default function ProductDetails() {
               <Text testID="form-total" style={styles.totalValue}>{total} {form.unit}</Text>
             </View>
           </View>
+          {!isNew && existing.data && (
+            <Pressable testID="open-transfer-btn" onPress={() => setTransferOpen(true)} style={styles.transferBtn}>
+              <Icon name="swap-horizontal" size={20} color={colors.onSurface} />
+              <Text style={styles.transferText}>Sposta merce tra ubicazioni</Text>
+            </Pressable>
+          )}
         </Field>
 
         <Field label="Soglia minima (sul totale)">
@@ -280,6 +368,27 @@ export default function ProductDetails() {
           </Pressable>
         </Pressable>
       </Modal>
+      <BarcodeScanModal
+        visible={scanOpen}
+        title="Associa codice a barre"
+        onCode={(code) => set("barcode", code)}
+        onClose={() => setScanOpen(false)}
+      />
+      {existing.data && (
+        <TransferModal
+          visible={transferOpen}
+          product={existing.data}
+          stockLocations={locations.data || []}
+          onClose={() => setTransferOpen(false)}
+          onDone={(updated) => {
+            setTransferOpen(false);
+            setForm((f) => ({ ...f, locations: updated.locations }));
+            qc.setQueryData(["product", id], updated);
+            qc.invalidateQueries({ queryKey: ["products"] });
+            qc.invalidateQueries({ queryKey: ["reorder"] });
+          }}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -315,6 +424,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border,
   },
   pickerText: { flex: 1, color: colors.onSurface, fontSize: 15 },
+  barcodeRow: { flexDirection: "row", gap: spacing.sm },
+  barcodeInputWrap: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  barcodeInput: { flex: 1, height: "100%", fontSize: 15, color: colors.onSurface },
+  scanBtn: {
+    width: 48, height: 48, borderRadius: radius.md, backgroundColor: colors.brandPrimary,
+    alignItems: "center", justifyContent: "center",
+  },
   locBox: {
     backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
     borderWidth: 1, borderColor: colors.border, padding: spacing.sm, gap: spacing.sm,
@@ -338,6 +454,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm, paddingTop: spacing.xs,
   },
   totalValue: { fontSize: 16, fontWeight: "800", color: colors.onSurface },
+  transferBtn: {
+    flexDirection: "row", alignItems: "center", justifyContent: "center", gap: spacing.sm,
+    height: 48, borderRadius: radius.md, marginTop: spacing.sm,
+    backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border,
+  },
+  transferText: { color: colors.onSurface, fontWeight: "700" },
+  supChips: { gap: spacing.sm, paddingTop: spacing.xs, paddingRight: spacing.lg },
+  supChip: {
+    flexShrink: 0, height: 36, paddingHorizontal: spacing.md, borderRadius: radius.pill,
+    backgroundColor: colors.surfaceTertiary, borderWidth: 1, borderColor: colors.border,
+    alignItems: "center", justifyContent: "center",
+  },
+  supChipActive: { backgroundColor: colors.onSurface, borderColor: colors.onSurface },
+  supChipText: { fontSize: 13, fontWeight: "600", color: colors.onSurface },
+  supChipTextActive: { color: colors.surface },
   switchRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,

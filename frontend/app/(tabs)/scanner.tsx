@@ -10,6 +10,7 @@ import * as Haptics from "expo-haptics";
 import { api, Product } from "@/src/api";
 import { colors, radius, spacing } from "@/src/theme";
 import { LocationQtyList } from "@/src/components/LocationQtyList";
+import { ProductPickerModal } from "@/src/components/ProductPickerModal";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActiveStock } from "@/src/stock-context";
 
@@ -30,6 +31,8 @@ export default function Scanner() {
   const [current, setCurrent] = useState<Product | null>(null);
   const [notFound, setNotFound] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [assignError, setAssignError] = useState<string | null>(null);
   const lastScanRef = useRef<{ code: string; ts: number } | null>(null);
 
   const lookup = async (code: string) => {
@@ -75,10 +78,27 @@ export default function Scanner() {
 
   const submitManual = async () => {
     if (!manualCode.trim()) return;
+    const code = manualCode.trim();
+    setManualCode("");
     setManualOpen(false);
     setScanning(false);
-    await lookup(manualCode.trim());
-    setManualCode("");
+    await lookup(code);
+  };
+
+  const openManual = () => { setManualCode(""); setManualOpen(true); };
+
+  const assignToExisting = async (p: Product) => {
+    if (!notFound) return;
+    setAssignError(null);
+    try {
+      const updated = await api.updateProduct(p.id, { barcode: notFound });
+      setPickerOpen(false);
+      setNotFound(null);
+      setCurrent(updated);
+      qc.invalidateQueries({ queryKey: ["products", activeStock?.id] });
+    } catch (e: any) {
+      setAssignError(e?.message || "Associazione non riuscita");
+    }
   };
 
   if (!permission) {
@@ -127,6 +147,13 @@ export default function Scanner() {
             >
               <Text style={styles.primaryBtnText}>Crea nuovo prodotto</Text>
             </Pressable>
+            <Pressable
+              testID="assign-existing"
+              onPress={() => { setAssignError(null); setPickerOpen(true); }}
+              style={styles.secondaryBtn}
+            >
+              <Text style={styles.secondaryBtnText}>Associa ad articolo esistente</Text>
+            </Pressable>
             <Pressable testID="scan-again" onPress={closeSheet} style={styles.secondaryBtn}>
               <Text style={styles.secondaryBtnText}>Scansiona di nuovo</Text>
             </Pressable>
@@ -137,10 +164,20 @@ export default function Scanner() {
   ) : null;
 
   const manualDialog = (
-    <ManualDialog
-      visible={manualOpen} onClose={() => setManualOpen(false)}
-      code={manualCode} setCode={setManualCode} onSubmit={submitManual}
-    />
+    <>
+      <ManualDialog
+        visible={manualOpen} onClose={() => setManualOpen(false)}
+        code={manualCode} setCode={setManualCode} onSubmit={submitManual}
+      />
+      <ProductPickerModal
+        visible={pickerOpen}
+        title="Associa codice ad articolo"
+        subtitle={notFound ? `Codice ${notFound}` : null}
+        error={assignError}
+        onPick={assignToExisting}
+        onClose={() => setPickerOpen(false)}
+      />
+    </>
   );
 
   if (!permission.granted) {
@@ -152,7 +189,7 @@ export default function Scanner() {
         <Pressable testID="grant-permission" onPress={requestPermission} style={styles.primaryBtn}>
           <Text style={styles.primaryBtnText}>Concedi permesso</Text>
         </Pressable>
-        <Pressable testID="manual-only" onPress={() => setManualOpen(true)} style={styles.secondaryBtn}>
+        <Pressable testID="manual-only" onPress={openManual} style={styles.secondaryBtn}>
           <Text style={styles.secondaryBtnText}>Inserimento manuale</Text>
         </Pressable>
         {resultSheet}
@@ -207,7 +244,7 @@ export default function Scanner() {
             >
               <Icon name={torch ? "flashlight" : "flashlight-off"} size={22} color={torch ? colors.onBrandPrimary : "#FFFFFF"} />
             </Pressable>
-            <Pressable testID="manual-entry-btn" onPress={() => setManualOpen(true)} style={styles.manualBtn}>
+            <Pressable testID="manual-entry-btn" onPress={openManual} style={styles.manualBtn}>
               <Icon name="keyboard-outline" size={22} color={colors.onBrandPrimary} />
               <Text style={styles.manualBtnText}>Inserimento manuale</Text>
             </Pressable>
@@ -241,16 +278,25 @@ function ManualDialog({
       >
         <View style={styles.modalCard}>
           <Text style={styles.modalTitle}>Inserisci codice a barre</Text>
-          <TextInput
-            testID="manual-code-input"
-            value={code}
-            onChangeText={setCode}
-            placeholder="es. 8001234500011"
-            placeholderTextColor={colors.muted}
-            keyboardType="number-pad"
-            autoFocus
-            style={styles.input}
-          />
+          <View style={styles.manualInputRow}>
+            <TextInput
+              testID="manual-code-input"
+              value={code}
+              onChangeText={setCode}
+              placeholder="es. 8001234500011"
+              placeholderTextColor={colors.muted}
+              keyboardType="number-pad"
+              returnKeyType="search"
+              onSubmitEditing={onSubmit}
+              autoFocus
+              style={styles.manualInput}
+            />
+            {code.length > 0 && (
+              <Pressable testID="manual-code-clear" onPress={() => setCode("")} hitSlop={8}>
+                <Icon name="close-circle" size={20} color={colors.muted} />
+              </Pressable>
+            )}
+          </View>
           <View style={{ flexDirection: "row", gap: spacing.sm }}>
             <Pressable onPress={onClose} style={[styles.secondaryBtn, { flex: 1 }]}>
               <Text style={styles.secondaryBtnText}>Annulla</Text>
@@ -273,6 +319,11 @@ const styles = StyleSheet.create({
   topSub: { color: "rgba(255,255,255,0.75)", fontSize: 13 },
   frameWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
   frame: { width: 300, height: 160 },
+  manualInputRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm,
+    backgroundColor: colors.surfaceTertiary, borderRadius: radius.md, paddingHorizontal: spacing.md, height: 48,
+  },
+  manualInput: { flex: 1, height: "100%", color: colors.onSurface, fontSize: 15 },
   scanLine: {
     position: "absolute", left: 16, right: 16, top: "50%", height: 2,
     backgroundColor: colors.brandPrimary, opacity: 0.8,

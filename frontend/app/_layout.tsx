@@ -22,6 +22,8 @@ export default function RootLayout() {
                 <Stack.Screen name="product/[id]" options={{ presentation: "card" }} />
                 <Stack.Screen name="locations" options={{ presentation: "card" }} />
                 <Stack.Screen name="stocks" options={{ presentation: "card" }} />
+                <Stack.Screen name="order-export" options={{ presentation: "card" }} />
+                <Stack.Screen name="receiving" options={{ presentation: "card" }} />
               </Stack>
             </KeyboardProvider>
           </StockProvider>

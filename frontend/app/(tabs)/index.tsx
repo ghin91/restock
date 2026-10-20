@@ -66,6 +66,19 @@ export default function Home() {
           </View>
         </Pressable>
 
+        <Pressable
+          testID="action-receiving"
+          onPress={() => router.push("/receiving" as any)}
+          style={styles.receivingBtn}
+        >
+          <Icon name="truck-delivery-outline" size={24} color={colors.onSurface} />
+          <View style={{ flex: 1 }}>
+            <Text style={styles.actionText}>Carico merce</Text>
+            <Text style={styles.lowMeta}>Registra la merce arrivata dal fornitore</Text>
+          </View>
+          <Icon name="chevron-right" size={22} color={colors.muted} />
+        </Pressable>
+
         <View style={styles.actionsRow}>
           <Pressable
             testID="action-new-product"
@@ -152,6 +165,11 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255,255,255,0.18)", alignItems: "center", justifyContent: "center",
   },
   actionsRow: { flexDirection: "row", gap: spacing.sm },
+  receivingBtn: {
+    flexDirection: "row", alignItems: "center", gap: spacing.md,
+    backgroundColor: colors.surfaceSecondary, borderWidth: 1, borderColor: colors.border,
+    padding: spacing.md, borderRadius: radius.md,
+  },
   action: {
     flex: 1,
     flexDirection: "row",

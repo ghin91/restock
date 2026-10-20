@@ -20,7 +20,9 @@
         "backgroundColor": "#FDFBF7"
       },
       "package": "com.emergent.stockreorder.jevz99",
-      "permissions": ["android.permission.CAMERA"]
+      "permissions": [
+        "android.permission.CAMERA"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -48,7 +50,8 @@
         {
           "cameraPermission": "Scan barcodes to update stock counts"
         }
-      ]
+      ],
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true
