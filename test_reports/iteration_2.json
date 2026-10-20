@@ -1,0 +1,30 @@
+{
+  "summary": "Full re-test of StockCount Pro multi-stock feature + 2 defect fixes. Backend: 9/9 pytest tests pass covering Stocks CRUD, cross-stock data isolation (products, barcodes, stats, reorder, locations all scoped by stock_id), legacy migration (seeded products carry stock_id), and validation (invalid stock_id -> 404, missing stock_id query -> 422). Frontend: stock-switcher pill is present on Home, tapping opens modal with 'Gestisci stock' which navigates to /stocks; creating a stock via new-stock-input + add-stock-btn makes it active and the Home switcher shows the new stock name (query cache invalidated). Scanner defect #1 FIXED: on web preview (camera permission denied) the result bottom sheet now renders — known barcode 8001234500011 shows 'Latte Intero 1L' sheet with scan-next; unknown barcode shows 'Codice non trovato' with create-from-scan. Product form defect #2 FIXED: /product/new -> Crea prodotto navigates to /inventory with no GO_BACK warning emitted.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stockcount_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py still uses Pydantic v1 .dict() API (not blocking).",
+    "GET /api/products still regex-matches raw user input in `q` (consider escaping).",
+    "backend has no idempotency guard on duplicate (barcode, stock_id) products — business decision, but worth noting.",
+    "Pytest runs under xdist default (-n auto) and the TestStocks.test_cannot_delete_only_stock test deletes ALL extra stocks, which races with TestIsolation fixtures on another worker. Mitigated by running serially; consider marking as serial or using unique DB per worker."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stockcount_api.py (rewritten for new multi-stock schema)"
+  ],
+  "success_rate": {"backend": "100% (9/9)", "frontend": "100% of tested flows"},
+  "seed_data_creation": "Test fixtures create and delete TEST_* and UI_Stock_* stocks + TEST_UI_* products. Final cleanup pass removed all remaining test data. Only the seeded 'Negozio Principale' with 10 sample products + 4 sample locations remains.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend solid. Frontend: all critical multi-stock flows + both previous defects verified via Playwright on mobile viewport 390x844. If regressions appear, re-run `pytest /app/backend/tests/test_stockcount_api.py -o addopts='' -v` (addopts override disables xdist parallelism which otherwise races on test_cannot_delete_only_stock).",
+  "rca_of_issue": "Not applicable — both defects from iteration_1 are fixed. (1) Scanner result bottom sheet is now rendered outside the camera-granted branch so manual-entry works on web; (2) product/[id].tsx now uses router.canGoBack() ? router.back() : router.replace('/(tabs)/inventory') after save, so direct URL -> create emits no GO_BACK warning and lands on the inventory tab."
+}

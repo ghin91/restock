@@ -1,0 +1,154 @@
+{
+  "app_name": "StockCount Pro",
+  "personality": "4 Tactile / Playful LIGHT",
+  "personality_one_liner": "A friendly, highly touchable utility app that makes counting stock in a warehouse feel fast, error-free, and satisfying with oversized tap targets and warm, colorful accents.",
+  "color": {
+    "surface": "#FDFBF7",
+    "onSurface": "#1A1A1A",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#1A1A1A",
+    "surfaceTertiary": "#F2EFE9",
+    "onSurfaceTertiary": "#1A1A1A",
+    "surfaceInverse": "#2A2A2A",
+    "onSurfaceInverse": "#FFFFFF",
+    "brand": "#FF6B6B",
+    "brandPrimary": "#FF6B6B",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#FF8787",
+    "onBrandSecondary": "#FFFFFF",
+    "brandTertiary": "#FFE3E3",
+    "onBrandTertiary": "#FF6B6B",
+    "success": "#059669",
+    "onSuccess": "#FFFFFF",
+    "warning": "#F59E0B",
+    "onWarning": "#1A1A1A",
+    "error": "#EF4444",
+    "onError": "#FFFFFF",
+    "info": "#3B82F6",
+    "onInfo": "#FFFFFF",
+    "border": "#E5E2DB",
+    "borderStrong": "#D4CFD1",
+    "divider": "#E5E2DB",
+    "muted": "#737373"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Nunito",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous spacing. Maintain at least 44x44pt for touch targets, especially on +/- steppers. Use consistent padding to prevent layout shifts in numbers.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 8,
+    "md": 16,
+    "lg": 24,
+    "pill": 999
+  },
+  "shadow_tier": 2,
+  "navigation": "bottom_tabs",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": false,
+    "do's": [],
+    "dont's": [
+      "Avoid glassmorphism for this app. We are prioritizing high-contrast, chunky, touchable UI (Tactile) for quick operations in potentially harsh lighting environments (warehouses)."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "screens": [
+    {
+      "name": "Dashboard",
+      "purpose": "A quick overview of total stock, items needing reordering, and a prominent 'Scan to Count' hero button.",
+      "states": {
+        "loading": "Centered spinner",
+        "empty": "N/A",
+        "error": "Error loading stats, Retry button"
+      },
+      "layout": "Top summary tiles (Total Products, Low Stock). Below that, a giant Hero button 'Scan Barcode'. Bottom section: Horizontal scrolling list of 'Low Stock Alerts' showing items that need immediate attention."
+    },
+    {
+      "name": "Inventory List",
+      "purpose": "Searchable, filterable list of all products with inline +/- quantity steppers for fast manual updating.",
+      "states": {
+        "loading": "Skeleton list items",
+        "empty": "Illustration of empty shelves + 'No products found' + 'Add Product' button.",
+        "error": "Readable message + Retry button"
+      },
+      "layout": "Sticky search bar at the top with a pill filter for 'Location'. Below, a vertical list of products. Each list row contains product image, name, location, a color-coded 'health bar' (Green/Amber/Red based on stock vs threshold), and a prominent 44x44 stepper on the right for immediate +/- adjustments without navigating away."
+    },
+    {
+      "name": "Scanner",
+      "purpose": "Native camera view for scanning barcodes to instantly find or count items.",
+      "states": {
+        "loading": "Camera initialization spinner",
+        "empty": "N/A",
+        "error": "Camera permission denied message + Settings button"
+      },
+      "layout": "Full-screen camera with a central transparent cutout frame. Text overlay 'Align barcode within frame'. A bottom overlay providing a 'Manual Entry' fallback button. Upon successful scan, a bottom sheet slides up showing the product details and a large quantity stepper to update stock immediately."
+    },
+    {
+      "name": "Reorder List",
+      "purpose": "Automatically compiled list of items that are below their minimum threshold or manually flagged for reordering.",
+      "states": {
+        "loading": "Skeleton list items",
+        "empty": "Illustration of a fully stocked box + 'Everything is stocked up!'.",
+        "error": "Readable message + Retry button"
+      },
+      "layout": "List of products that hit the minimum threshold. Each row shows the current quantity in Red/Amber. Sticky primary CTA 'Export / Share List' fixed at the bottom."
+    },
+    {
+      "name": "Product Details / CRUD",
+      "purpose": "Detailed view to edit product info, barcode, location, and set the minimum stock threshold.",
+      "states": {
+        "loading": "Skeleton details",
+        "empty": "N/A",
+        "error": "Error loading product + Retry button"
+      },
+      "layout": "Header with product image. Single-column form layout: Name, Barcode (with manual or scan input), Location dropdown/text, Minimum Threshold numeric input, and a manual toggle switch 'Add to Reorder List'. Sticky 'Save' button at the bottom within KeyboardAvoidingView."
+    }
+  ],
+  "images": {
+    "hero_background": {
+      "url": "https://images.unsplash.com/photo-1644079446600-219068676743?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTV8MHwxfHNlYXJjaHwxfHx3YXJlaG91c2UlMjBzaGVsdmVzfGVufDB8fHx8MTc5MjM2NjU2Nnww&ixlib=rb-4.1.0&q=85",
+      "alt": "A large warehouse filled with lots of shelves"
+    },
+    "empty_inventory": {
+      "url": "https://images.unsplash.com/photo-1656543802898-41c8c46683a7?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzNDR8MHwxfHNlYXJjaHwxfHxib3glMjBwYWNrYWdpbmd8ZW58MHx8fHwxNzkyMzY2NTY2fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "A brown cardboard box"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Strictly follow the '4 Tactile / Playful' personality. Use chunky, rounded cards, oversized touch targets (44x44pt minimum), and vibrant Coral/Green accents on a warm off-white background.",
+    "Quantity Stepper Design (CRITICAL): The +/- stepper must be immediately accessible in the Inventory list rows. Ensure the minus button is disabled (not hidden) when quantity reaches 0. Use an onChange callback to update state. Haptic feedback on every tap is mandatory.",
+    "Stock Health Bar: Implement a horizontal progress/health bar on product rows. Transition colors dynamically: Green (Healthy) -> Amber/Warning (Approaching minimum threshold) -> Red/Error (Out of stock/Below threshold).",
+    "Scanner UX: The Scanner screen should present a center cutout frame for alignment. Once a barcode is scanned, do not navigate away immediately - slide up a Bottom Sheet (using @gorhom/bottom-sheet) with the product info and a stepper to adjust the count rapidly. Allow manual barcode entry as a fallback.",
+    "Images: Ensure text placed over the warehouse hero background utilizes the gradient-to-dark scrim pattern (transparent to >=70% surfaceInverse) to guarantee WCAG contrast readability.",
+    "Reorder Logic: An item automatically appears in the Reorder List if its current quantity is <= its 'min_threshold'. Include a manual override toggle on the Product Details page.",
+    "Do not implement authentication. The app is for a single owner device context."
+  ]
+}

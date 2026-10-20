@@ -1,0 +1,54 @@
+{
+  "summary": "Fresh StockCount Pro MVP tested end-to-end. Backend: 12/12 pytest tests pass (stats, product CRUD, barcode lookup, quantity delta clamp, reorder with manual flag, locations CRUD with in-use guard, idempotent location create, 404s). Frontend: Home, Inventory (search, location chips, +/- steppers), Reorder list, Product form, and Locations screens all render and work correctly. Two frontend defects found: (1) CRITICAL – Scanner manual entry never shows the result bottom sheet in web preview because the bottom sheet is only rendered inside the camera-granted branch; (2) MINOR – creating a product via /product/new throws 'The action GO_BACK was not handled' toast when loaded directly (product still gets created in DB).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "app/(tabs)/scanner.tsx",
+        "issue": "When camera permission is NOT granted (always true in Expo web preview), the ManualDialog closes and the known/unknown barcode result bottom sheet never appears. The sheet JSX (lines 141-199) and the lookup state (`current`, `notFound`, `loading`) exist only inside the main return block, while the no-permission early return (lines 80-98) only renders the dialog, not the sheet. Verified in-browser: clicking manual-submit with 8001234500011 (Latte Intero) returns Product 200 from /api/products/barcode/{code} but UI shows nothing; same for unknown barcodes – 'create-from-scan' button is never visible.",
+        "testID": "scan-next / create-from-scan",
+        "priority": "HIGH"
+      },
+      {
+        "component": "app/product/[id].tsx (new)",
+        "issue": "After Crea prodotto on /product/new loaded directly, toast 'The action GO_BACK was not handled by any navigator' appears. Product IS created in backend (verified via GET /api/products?q=TEST_UI), but user is left on the form with no navigation feedback. Replace router.back() with router.replace('/(tabs)/inventory') or router.canGoBack() check.",
+        "testID": "",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Scanner -> known barcode -> quantity stepper bottom sheet",
+        "issue": "Flow is broken on web preview because of the UI bug above. Backend barcode lookup works.",
+        "affected_testIDs": ["manual-only", "manual-entry-btn", "manual-code-input", "manual-submit", "scan-next", "create-from-scan"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stockcount_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "FIX scanner.tsx: lift the result bottom sheet (and the current/notFound/loading rendering) out of the camera-granted branch so it also renders when permission is denied (web). Alternatively render a shared overlay regardless of permission state. Required for manual-entry workflow to be usable on web.",
+    "FIX product/[id].tsx: on successful create/update, use router.replace('/(tabs)/inventory') (or check router.canGoBack()) instead of router.back() so direct-URL navigation does not emit the GO_BACK warning.",
+    "Nice-to-have: add testID='manual-barcode-input' alias or document testID='manual-code-input'; add testIDs on inventory +/- stepper buttons and inventory search input for easier automation."
+  ],
+  "critical_code_review_comments": [
+    "server.py uses `.dict()` (Pydantic v1 API). Harmless now but should migrate to `.model_dump()` for Pydantic v2.",
+    "GET /api/products uses regex on raw user input – consider escaping q to avoid regex injection errors on special chars.",
+    "stats and reorder scan the full products collection in Python; fine at this scale but should become aggregations if data grows.",
+    "scanner.tsx is >200 lines with duplicated ManualDialog mounts in both branches – only one rendering is reachable at a time but the duplication contributed to the bug above."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100%", "frontend": "~85%"},
+  "seed_data_creation": "No persistent test data left. Pytest tests clean up all TEST_ prefixed products and locations. One TEST_UI_Product created during UI testing was deleted via API.",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend is solid (12/12). After E1 fixes scanner bottom-sheet rendering under no-permission branch and the GO_BACK navigation on product create, re-run the Playwright flow: open /scanner -> tap 'Inserimento manuale' -> submit '8001234500011' -> expect bottom sheet with product name 'Latte Intero 1L' and testID='scan-next'; then submit 'NEWCODE_1234' -> expect 'Codice non trovato' with testID='create-from-scan'. Also validate that /product/new -> Crea prodotto routes back to inventory without warning.",
+  "rca_of_issue": "scanner.tsx early-returns the no-permission view at lines 76-98. The lookup result bottom sheet (lines 141-199) and its triggering state exist only in the main (permission-granted) return (lines 100+). On Expo web, camera permission is never granted, so manual-entry submit updates state but the sheet is never mounted. Fix by rendering a shared sheet overlay (e.g. moving the sheet JSX outside the early return, or restructuring to a single return with conditional camera content)."
+}
