@@ -1,0 +1,31 @@
+{
+  "summary": "Full re-test of StockCount Pro new multi-location per-product schema. Backend: 19/19 pytest tests pass covering (a) Product schema with locations:[{location,quantity}] + derived total_quantity (legacy top-level location/quantity fields never leak in responses), (b) POST /api/products creates with multi-location array and defaults to a single 'Magazzino' row when omitted, (c) PATCH /api/products/{id} replaces the locations array and clamps negative quantities to 0, (d) POST /api/products/{id}/locations/{name}/quantity adjusts only that location, clamps at 0, 404s when location missing and delta<=0, auto-adds the location when missing and delta>0, (e) GET /api/reorder and /api/stats use total_quantity (manual_reorder=true always included; sum(locations.quantity) drives total_units/low/out), (f) GET /api/products?location=X filters to products that have X among locations, (g) DELETE /api/locations/{id} blocked (400) when any product references the name, (h) barcode lookup resolves UPC-A↔EAN-13 leading-zero variants, (i) cross-stock isolation (same barcode in two stocks resolves independently), (j) existing user products already have the new schema (migration successful). Frontend: multi-location product form at /product/new persists two rows via loc-picker-i/loc-qty-i/add-location-row, form-total shows live sum (8 pz) and save creates product in backend with correct locations and total_quantity. Inventory shows total-{id} box for multi-location rows (text '8 totale'); selecting chip-ScaffA swaps the row into focus mode and stepper-{id}-plus increments only ScaffA (verified: ScaffA 5→6, ScaffB unchanged 3, total 8→9). Reorder tab shows reorder-total-{id} badge with the correct total. Scanner on web (permission-denied view): manual-only → manual-code-input → manual-submit opens the result sheet rendering per-location steppers (scanner-loc-ScaffA-plus / scanner-loc-ScaffB-plus) and scanner-loc-total ('9 pz'); +1 on ScaffA updates backend (ScaffA 6→7, total 9→10) and the sheet refreshes. Unknown barcode on manual entry shows create-from-scan CTA. torch-toggle/zoom-toggle exist only inside the camera CameraView branch (native-only), as expected.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_stockcount_api.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "server.py _hydrate_product unconditionally strips legacy top-level `location`/`quantity`, which is correct, but update_product doesn't $unset them if they still exist on disk. Not blocking since _hydrate_product masks them in responses, but a one-shot migration ($unset legacy fields) was already done at startup for empty-locations docs only — if any doc has BOTH legacy fields and locations, legacy stays on disk forever. Low priority.",
+    "server.py line 286 variants = {code, code.lstrip('0') or code, '0'+code} — handles the common UPC-A↔EAN-13 pair. Does NOT cover double-leading-zero stored codes (e.g. stored '012…' queried as '0012…'); flagged in my first test iteration but is an atypical case and the current logic matches the stated requirement.",
+    "Pydantic v1 .dict() API still used (deprecation warning in Pydantic v2); non-blocking.",
+    "GET /api/products regex-matches raw user input in `q` (no escape); low risk since Mongo regex is DOS-only.",
+    "No idempotency guard on (stock_id, barcode) at product creation — business decision."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_stockcount_api.py (rewritten for new multi-location schema: 19 tests across 8 test classes)"
+  ],
+  "success_rate": {"backend": "100% (19/19)", "frontend": "100% of tested flows (product form multi-loc, inventory total + chip stepper, reorder badge, scanner manual entry + per-location steppers)"},
+  "seed_data_creation": "All test data created via TEST_ prefixed stocks (TEST_UI_LOC, TEST_UI_LOC2, TEST_LOC_*, TEST_Stock_*, TEST_B_*, TEST_BC2_*) and deleted at the end of each test / UI run (verified cleanup status 200). User's real stocks 'Negozio', 'Casa', 'Materiale elettronico' were NOT modified. The seed/migration logic ran once at startup and no new products were added to user stocks.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Run backend tests with xdist disabled: `cd /app && export $(grep -v '^#' frontend/.env | xargs) && pytest backend/tests/test_stockcount_api.py -o addopts='' -v`. QuantityStepper testID suffixes are `-plus`/`-minus` (not `-inc`/`-dec`). On web the scanner always shows permission-denied view; use manual-only → manual-code-input → manual-submit to open the result sheet. Scanner result sheet renders LocationQtyList with testIDPrefix='scanner-loc' so per-location stepper testIDs are `scanner-loc-{location}-plus/-minus` and the total is `scanner-loc-total`. Stock-switcher's modal is cached — reload the page after creating a stock via API before trying to activate it in the UI.",
+  "rca_of_issue": "N/A — all tested behavior matches the requirement list."
+}

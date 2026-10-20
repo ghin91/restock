@@ -9,13 +9,27 @@ import { StockHealthBar } from "./StockHealthBar";
 
 type Props = {
   product: Product;
-  onDelta: (id: string, delta: number) => void;
+  // When set, the row shows and edits only that location's quantity.
+  focusLocation?: string | null;
+  onDelta: (id: string, location: string, delta: number) => void;
 };
 
-export function ProductRow({ product, onDelta }: Props) {
+export function ProductRow({ product, focusLocation, onDelta }: Props) {
   const router = useRouter();
-  const low = product.quantity <= product.min_threshold;
-  const out = product.quantity === 0;
+  const total = product.total_quantity;
+  const low = total <= product.min_threshold;
+  const out = total === 0;
+
+  const focused = focusLocation ? product.locations.find((l) => l.location === focusLocation) : null;
+  const single = product.locations.length === 1 ? product.locations[0] : null;
+  const editable = focused || single;
+
+  const locLabel = focused
+    ? `${focused.location} · totale ${total}`
+    : single
+      ? single.location
+      : `${product.locations.length} ubicazioni`;
+
   return (
     <Pressable
       testID={`product-row-${product.id}`}
@@ -40,19 +54,25 @@ export function ProductRow({ product, onDelta }: Props) {
         </View>
         <View style={styles.metaRow}>
           <Icon name="map-marker-outline" size={14} color={colors.muted} />
-          <Text style={styles.meta}>{product.location}</Text>
-          <Text style={styles.dot}>·</Text>
-          <Text style={styles.meta}>min {product.min_threshold} {product.unit}</Text>
+          <Text style={styles.meta} numberOfLines={1}>{locLabel}</Text>
         </View>
+        <Text style={styles.meta}>min {product.min_threshold} {product.unit}</Text>
         <View style={{ marginTop: spacing.xs }}>
-          <StockHealthBar quantity={product.quantity} threshold={product.min_threshold} />
+          <StockHealthBar quantity={total} threshold={product.min_threshold} />
         </View>
       </View>
-      <QuantityStepper
-        testIDPrefix={`stepper-${product.id}`}
-        value={product.quantity}
-        onChange={(d) => onDelta(product.id, d)}
-      />
+      {editable ? (
+        <QuantityStepper
+          testIDPrefix={`stepper-${product.id}`}
+          value={editable.quantity}
+          onChange={(d) => onDelta(product.id, editable.location, d)}
+        />
+      ) : (
+        <View style={styles.totalBox} testID={`total-${product.id}`}>
+          <Text style={styles.totalNum}>{total}</Text>
+          <Text style={styles.totalLabel}>totale</Text>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -82,6 +102,12 @@ const styles = StyleSheet.create({
   badge: { paddingHorizontal: spacing.sm, paddingVertical: 2, borderRadius: radius.pill },
   badgeText: { fontSize: 10, fontWeight: "800", color: colors.onError, letterSpacing: 0.3 },
   metaRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
-  meta: { fontSize: 12, color: colors.muted },
-  dot: { color: colors.muted, marginHorizontal: 2 },
+  meta: { fontSize: 12, color: colors.muted, flexShrink: 1 },
+  totalBox: {
+    minWidth: 64, height: 52, borderRadius: radius.md,
+    backgroundColor: colors.surfaceTertiary, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  totalNum: { fontSize: 18, fontWeight: "800", color: colors.onSurface },
+  totalLabel: { fontSize: 10, color: colors.muted, fontWeight: "700" },
 });

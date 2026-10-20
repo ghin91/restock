@@ -33,14 +33,14 @@ export default function ProductDetails() {
   const [form, setForm] = useState<Partial<Product>>({
     name: "",
     barcode: typeof initialBarcode === "string" ? initialBarcode : "",
-    location: "Magazzino",
-    quantity: 0,
+    locations: [],
     min_threshold: 5,
     unit: "pz",
     manual_reorder: false,
   });
   const [saving, setSaving] = useState(false);
-  const [pickerOpen, setPickerOpen] = useState(false);
+  // Index of the location row whose picker is open; -1 = add a new row.
+  const [pickerIndex, setPickerIndex] = useState<number | null>(null);
 
   useEffect(() => {
     if (existing.data) setForm(existing.data);
@@ -48,12 +48,27 @@ export default function ProductDetails() {
 
   useEffect(() => {
     if (!isNew) return;
-    if (!form.location && locations.data?.[0]) {
-      setForm((f) => ({ ...f, location: locations.data![0].name }));
+    if ((form.locations?.length ?? 0) === 0 && locations.data?.[0]) {
+      setForm((f) => ({ ...f, locations: [{ location: locations.data![0].name, quantity: 0 }] }));
     }
   }, [locations.data, isNew]);
 
   const set = <K extends keyof Product>(k: K, v: Product[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const rows = form.locations || [];
+  const total = rows.reduce((s, l) => s + (Number(l.quantity) || 0), 0);
+  const setRowQty = (i: number, q: number) =>
+    set("locations", rows.map((l, idx) => (idx === i ? { ...l, quantity: Math.max(0, q) } : l)));
+  const removeRow = (i: number) => set("locations", rows.filter((_, idx) => idx !== i));
+  const pickLocation = (name: string) => {
+    if (pickerIndex === null) return;
+    if (rows.some((l, idx) => l.location === name && idx !== pickerIndex)) {
+      setPickerIndex(null);
+      return;
+    }
+    if (pickerIndex === -1) set("locations", [...rows, { location: name, quantity: 0 }]);
+    else set("locations", rows.map((l, idx) => (idx === pickerIndex ? { ...l, location: name } : l)));
+    setPickerIndex(null);
+  };
 
   const save = async () => {
     if (!form.name?.trim()) {
@@ -71,17 +86,19 @@ export default function ProductDetails() {
           stock_id: activeStock!.id,
           name: form.name!.trim(),
           barcode: form.barcode || undefined,
-          location: form.location || "Magazzino",
-          quantity: Number(form.quantity) || 0,
+          locations: rows,
           min_threshold: Number(form.min_threshold) || 0,
           unit: form.unit || "pz",
           manual_reorder: !!form.manual_reorder,
         });
       } else {
         await api.updateProduct(id as string, {
-          ...form,
-          quantity: Number(form.quantity) || 0,
+          name: form.name,
+          barcode: form.barcode ?? "",
+          locations: rows,
           min_threshold: Number(form.min_threshold) || 0,
+          unit: form.unit,
+          manual_reorder: !!form.manual_reorder,
         });
       }
       qc.invalidateQueries({ queryKey: ["products"] });
@@ -157,38 +174,47 @@ export default function ProductDetails() {
           />
         </Field>
 
-        <Field label="Ubicazione">
-          <Pressable testID="location-picker" onPress={() => setPickerOpen(true)} style={styles.pickerBtn}>
-            <Icon name="map-marker-outline" size={18} color={colors.onSurface} />
-            <Text style={styles.pickerText}>{form.location || "Seleziona"}</Text>
-            <Icon name="chevron-down" size={18} color={colors.muted} />
-          </Pressable>
+        <Field label="Ubicazioni e disponibilità">
+          <View style={styles.locBox}>
+            {rows.map((l, i) => (
+              <View key={`${l.location}-${i}`} style={styles.locRow} testID={`loc-row-${i}`}>
+                <Pressable testID={`loc-picker-${i}`} onPress={() => setPickerIndex(i)} style={styles.locName}>
+                  <Icon name="map-marker-outline" size={16} color={colors.brandPrimary} />
+                  <Text style={styles.pickerText} numberOfLines={1}>{l.location}</Text>
+                  <Icon name="chevron-down" size={16} color={colors.muted} />
+                </Pressable>
+                <TextInput
+                  testID={`loc-qty-${i}`}
+                  value={String(l.quantity ?? 0)}
+                  onChangeText={(v) => setRowQty(i, Number(v.replace(/[^0-9]/g, "") || 0))}
+                  keyboardType="number-pad"
+                  style={styles.qtyInput}
+                />
+                <Pressable testID={`loc-remove-${i}`} onPress={() => removeRow(i)} style={styles.removeBtn}>
+                  <Icon name="close" size={18} color={colors.error} />
+                </Pressable>
+              </View>
+            ))}
+            <Pressable testID="add-location-row" onPress={() => setPickerIndex(-1)} style={styles.addLocBtn}>
+              <Icon name="plus" size={18} color={colors.brandPrimary} />
+              <Text style={styles.manageBtnText}>Aggiungi ubicazione</Text>
+            </Pressable>
+            <View style={styles.totalRow}>
+              <Text style={styles.label}>Totale</Text>
+              <Text testID="form-total" style={styles.totalValue}>{total} {form.unit}</Text>
+            </View>
+          </View>
         </Field>
 
-        <View style={{ flexDirection: "row", gap: spacing.md }}>
-          <View style={{ flex: 1 }}>
-            <Field label="Quantità attuale">
-              <TextInput
-                testID="quantity-input"
-                value={String(form.quantity ?? 0)}
-                onChangeText={(v) => set("quantity", Math.max(0, Number(v.replace(/[^0-9]/g, "") || 0)))}
-                keyboardType="number-pad"
-                style={styles.input}
-              />
-            </Field>
-          </View>
-          <View style={{ flex: 1 }}>
-            <Field label="Soglia minima">
-              <TextInput
-                testID="min-threshold-input"
-                value={String(form.min_threshold ?? 0)}
-                onChangeText={(v) => set("min_threshold", Math.max(0, Number(v.replace(/[^0-9]/g, "") || 0)))}
-                keyboardType="number-pad"
-                style={styles.input}
-              />
-            </Field>
-          </View>
-        </View>
+        <Field label="Soglia minima (sul totale)">
+          <TextInput
+            testID="min-threshold-input"
+            value={String(form.min_threshold ?? 0)}
+            onChangeText={(v) => set("min_threshold", Math.max(0, Number(v.replace(/[^0-9]/g, "") || 0)))}
+            keyboardType="number-pad"
+            style={styles.input}
+          />
+        </Field>
 
         <Field label="Unità di misura">
           <TextInput
@@ -222,27 +248,30 @@ export default function ProductDetails() {
         </Pressable>
       </View>
 
-      <Modal visible={pickerOpen} transparent animationType="fade" onRequestClose={() => setPickerOpen(false)}>
-        <Pressable style={styles.modalBackdrop} onPress={() => setPickerOpen(false)}>
+      <Modal visible={pickerIndex !== null} transparent animationType="fade" onRequestClose={() => setPickerIndex(null)}>
+        <Pressable style={styles.modalBackdrop} onPress={() => setPickerIndex(null)}>
           <Pressable style={styles.modalCard} onPress={() => {}}>
             <Text style={styles.modalTitle}>Seleziona ubicazione</Text>
             <ScrollView style={{ maxHeight: 320 }}>
-              {(locations.data || []).map((l) => (
-                <Pressable
-                  key={l.id}
-                  testID={`location-option-${l.name}`}
-                  onPress={() => { set("location", l.name); setPickerOpen(false); }}
-                  style={styles.locationOpt}
-                >
-                  <Icon name="map-marker-outline" size={18} color={colors.onSurface} />
-                  <Text style={styles.locationOptText}>{l.name}</Text>
-                  {form.location === l.name && <Icon name="check" size={18} color={colors.brandPrimary} />}
-                </Pressable>
-              ))}
+              {(locations.data || []).map((l) => {
+                const used = rows.some((r) => r.location === l.name);
+                return (
+                  <Pressable
+                    key={l.id}
+                    testID={`location-option-${l.name}`}
+                    onPress={() => pickLocation(l.name)}
+                    style={[styles.locationOpt, used && { opacity: 0.4 }]}
+                  >
+                    <Icon name="map-marker-outline" size={18} color={colors.onSurface} />
+                    <Text style={styles.locationOptText}>{l.name}</Text>
+                    {used && <Icon name="check" size={18} color={colors.brandPrimary} />}
+                  </Pressable>
+                );
+              })}
             </ScrollView>
             <Pressable
               testID="manage-locations"
-              onPress={() => { setPickerOpen(false); router.push("/locations" as any); }}
+              onPress={() => { setPickerIndex(null); router.push("/locations" as any); }}
               style={styles.manageBtn}
             >
               <Icon name="cog-outline" size={16} color={colors.brandPrimary} />
@@ -286,6 +315,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md, borderWidth: 1, borderColor: colors.border,
   },
   pickerText: { flex: 1, color: colors.onSurface, fontSize: 15 },
+  locBox: {
+    backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,
+    borderWidth: 1, borderColor: colors.border, padding: spacing.sm, gap: spacing.sm,
+  },
+  locRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  locName: {
+    flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.xs,
+    backgroundColor: colors.surfaceTertiary, borderRadius: radius.sm, height: 44, paddingHorizontal: spacing.sm,
+  },
+  qtyInput: {
+    width: 72, height: 44, borderRadius: radius.sm, backgroundColor: colors.surfaceTertiary,
+    textAlign: "center", fontSize: 16, fontWeight: "700", color: colors.onSurface,
+  },
+  removeBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
+  addLocBtn: {
+    flexDirection: "row", gap: spacing.xs, alignItems: "center", justifyContent: "center",
+    height: 44, borderRadius: radius.sm, borderWidth: 1, borderStyle: "dashed", borderColor: colors.brandPrimary,
+  },
+  totalRow: {
+    flexDirection: "row", justifyContent: "space-between", alignItems: "center",
+    paddingHorizontal: spacing.sm, paddingTop: spacing.xs,
+  },
+  totalValue: { fontSize: 16, fontWeight: "800", color: colors.onSurface },
   switchRow: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,
     backgroundColor: colors.surfaceSecondary, borderRadius: radius.md,

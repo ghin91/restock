@@ -34,7 +34,14 @@ Routes (all prefixed with `/api`):
 - `expo-haptics` for stepper feedback.
 - No third-party integration or auth.
 
+## Update — Multi-location per product (Oct 2026)
+- Product now has `locations: [{location, quantity}]` + derived `total_quantity`.
+- Reorder and stats use the TOTAL across all locations.
+- New endpoint `POST /api/products/{id}/locations/{name}/quantity {delta}`.
+- Product form: add/remove locations, each with its own quantity, live total.
+- Inventory: location chip = edit that location's quantity; multi-location rows show total.
+- Scanner: per-location steppers in result sheet; autofocus, torch, 2x zoom, 1D-only formats, EAN-13/UPC-A leading-zero tolerant lookup.
+
 ## Future Enhancements
-- Per-location availability of the same SKU within a single stock.
 - Export reorder list as CSV / email.
 - Historical movements log (audit trail).

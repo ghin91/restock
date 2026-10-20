@@ -2,17 +2,19 @@ const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
 
 export type Stock = { id: string; name: string; created_at: string };
 
+export type ProductLocation = { location: string; quantity: number };
+
 export type Product = {
   id: string;
   stock_id: string;
   name: string;
   barcode?: string | null;
-  location: string;
-  quantity: number;
+  locations: ProductLocation[];
   min_threshold: number;
   unit: string;
   image_url?: string | null;
   manual_reorder: boolean;
+  total_quantity: number;
   created_at: string;
   updated_at: string;
 };
@@ -57,6 +59,8 @@ export const api = {
   deleteProduct: (id: string) => req<{ ok: boolean }>(`/products/${id}`, { method: "DELETE" }),
   changeQuantity: (id: string, delta: number) =>
     req<Product>(`/products/${id}/quantity`, { method: "POST", body: JSON.stringify({ delta }) }),
+  changeLocationQuantity: (id: string, locationName: string, delta: number) =>
+    req<Product>(`/products/${id}/locations/${encodeURIComponent(locationName)}/quantity`, { method: "POST", body: JSON.stringify({ delta }) }),
   getByBarcode: (code: string, stockId: string) =>
     req<Product>(`/products/barcode/${encodeURIComponent(code)}${qs({ stock_id: stockId })}`),
 

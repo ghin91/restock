@@ -18,8 +18,8 @@ export default function Reorder() {
   const stockId = activeStock?.id;
   const reorder = useQuery({ queryKey: ["reorder", stockId], queryFn: () => api.reorderList(stockId!), enabled: !!stockId });
 
-  const onDelta = async (id: string, delta: number) => {
-    const updated = await api.changeQuantity(id, delta);
+  const onDelta = async (id: string, location: string, delta: number) => {
+    const updated = await api.changeLocationQuantity(id, location, delta);
     qc.setQueryData<Product[]>(["reorder", stockId], (prev) =>
       prev ? prev.map((p) => (p.id === id ? updated : p)) : prev
     );
@@ -32,7 +32,11 @@ export default function Reorder() {
     const items = reorder.data || [];
     if (items.length === 0) return;
     const header = activeStock ? `Lista di riordino — ${activeStock.name}` : "Lista di riordino";
-    const lines = items.map((p) => `• ${p.name} — ${p.location} — attuale ${p.quantity}${p.unit}, min ${p.min_threshold}`);
+    const lines = items.map((p) => {
+      const detail = p.locations.map((l) => `${l.location}: ${l.quantity}`).join(", ");
+      const toOrder = Math.max(0, p.min_threshold * 2 - p.total_quantity);
+      return `• ${p.name} — totale ${p.total_quantity}${p.unit} (min ${p.min_threshold}) — da ordinare ~${toOrder}\n   ${detail}`;
+    });
     const message = `${header}\n\n${lines.join("\n")}`;
     try { await Share.share({ message }); } catch {}
   };
@@ -81,8 +85,9 @@ export default function Reorder() {
   );
 }
 
-function ReorderRow({ product, onDelta, onPress }: { product: Product; onDelta: (id: string, d: number) => void; onPress: () => void }) {
-  const out = product.quantity === 0;
+function ReorderRow({ product, onDelta, onPress }: { product: Product; onDelta: (id: string, loc: string, d: number) => void; onPress: () => void }) {
+  const out = product.total_quantity === 0;
+  const single = product.locations.length === 1 ? product.locations[0] : null;
   return (
     <Pressable
       testID={`reorder-row-${product.id}`}
@@ -90,11 +95,14 @@ function ReorderRow({ product, onDelta, onPress }: { product: Product; onDelta: 
       style={styles.row}
     >
       <View style={[styles.badge, { backgroundColor: out ? colors.error : colors.warning }]}>
-        <Text style={[styles.badgeText, { color: out ? colors.onError : colors.onWarning }]}>{product.quantity}</Text>
+        <Text testID={`reorder-total-${product.id}`} style={[styles.badgeText, { color: out ? colors.onError : colors.onWarning }]}>{product.total_quantity}</Text>
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.name} numberOfLines={1}>{product.name}</Text>
-        <Text style={styles.meta}>{product.location} · min {product.min_threshold} {product.unit}</Text>
+        <Text style={styles.meta}>Totale · min {product.min_threshold} {product.unit}</Text>
+        <Text style={styles.meta} numberOfLines={2}>
+          {product.locations.map((l) => `${l.location}: ${l.quantity}`).join(" · ")}
+        </Text>
         {product.manual_reorder && (
           <View style={styles.manualTag}>
             <Icon name="flag-outline" size={11} color={colors.info} />
@@ -102,7 +110,11 @@ function ReorderRow({ product, onDelta, onPress }: { product: Product; onDelta: 
           </View>
         )}
       </View>
-      <QuantityStepper testIDPrefix={`reorder-${product.id}`} value={product.quantity} onChange={(d) => onDelta(product.id, d)} />
+      {single ? (
+        <QuantityStepper testIDPrefix={`reorder-${product.id}`} value={single.quantity} onChange={(d) => onDelta(product.id, single.location, d)} />
+      ) : (
+        <Icon name="chevron-right" size={24} color={colors.muted} />
+      )}
     </Pressable>
   );
 }

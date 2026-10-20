@@ -28,9 +28,9 @@ export default function Inventory() {
   });
   const locations = useQuery({ queryKey: ["locations", stockId], queryFn: () => api.listLocations(stockId!), enabled: !!stockId });
 
-  const onDelta = async (id: string, delta: number) => {
+  const onDelta = async (id: string, location: string, delta: number) => {
     try {
-      const updated = await api.changeQuantity(id, delta);
+      const updated = await api.changeLocationQuantity(id, location, delta);
       qc.setQueryData<Product[]>(["products", stockId, q, loc], (prev) =>
         prev ? prev.map((p) => (p.id === id ? updated : p)) : prev
       );
@@ -111,7 +111,7 @@ export default function Inventory() {
         <FlatList
           data={products.data}
           keyExtractor={(p) => p.id}
-          renderItem={({ item }) => <ProductRow product={item} onDelta={onDelta} />}
+          renderItem={({ item }) => <ProductRow product={item} focusLocation={loc} onDelta={onDelta} />}
           contentContainerStyle={{
             paddingHorizontal: spacing.lg,
             paddingTop: spacing.md,

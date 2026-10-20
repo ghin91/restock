@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import {
-  View, Text, StyleSheet, Pressable, Modal, TextInput, Platform, ActivityIndicator, KeyboardAvoidingView,
+  View, Text, StyleSheet, Pressable, Modal, TextInput, Platform, ActivityIndicator, KeyboardAvoidingView, ScrollView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -9,9 +9,12 @@ import Icon from "@react-native-vector-icons/material-design-icons";
 import * as Haptics from "expo-haptics";
 import { api, Product } from "@/src/api";
 import { colors, radius, spacing } from "@/src/theme";
-import { QuantityStepper } from "@/src/components/QuantityStepper";
+import { LocationQtyList } from "@/src/components/LocationQtyList";
 import { useQueryClient } from "@tanstack/react-query";
 import { useActiveStock } from "@/src/stock-context";
+
+// Linear (1D) retail formats only: fewer decoders = faster, more reliable reads.
+const BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "code93", "itf14", "codabar"] as const;
 
 export default function Scanner() {
   const insets = useSafeAreaInsets();
@@ -20,6 +23,8 @@ export default function Scanner() {
   const { activeStock } = useActiveStock();
   const [permission, requestPermission] = useCameraPermissions();
   const [scanning, setScanning] = useState(true);
+  const [torch, setTorch] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
   const [manualOpen, setManualOpen] = useState(false);
   const [manualCode, setManualCode] = useState("");
   const [current, setCurrent] = useState<Product | null>(null);
@@ -53,9 +58,9 @@ export default function Scanner() {
     lookup(code);
   };
 
-  const onDelta = async (delta: number) => {
+  const onDelta = async (location: string, delta: number) => {
     if (!current) return;
-    const updated = await api.changeQuantity(current.id, delta);
+    const updated = await api.changeLocationQuantity(current.id, location, delta);
     setCurrent(updated);
     qc.invalidateQueries({ queryKey: ["products", activeStock?.id] });
     qc.invalidateQueries({ queryKey: ["stats", activeStock?.id] });
@@ -93,18 +98,12 @@ export default function Scanner() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={styles.sheetTitle} numberOfLines={2}>{current.name}</Text>
-                <Text style={styles.sheetMeta}>{current.location} · min {current.min_threshold}</Text>
+                <Text style={styles.sheetMeta}>Totale {current.total_quantity} {current.unit} · min {current.min_threshold}</Text>
               </View>
             </View>
-            <View style={styles.qtyRow}>
-              <Text style={styles.qtyLabel}>Quantità</Text>
-              <QuantityStepper
-                testIDPrefix="scanner-stepper"
-                value={current.quantity}
-                onChange={onDelta}
-                size={52}
-              />
-            </View>
+            <ScrollView style={{ maxHeight: 280 }}>
+              <LocationQtyList product={current} onDelta={onDelta} testIDPrefix="scanner-loc" />
+            </ScrollView>
             <Pressable
               testID="open-product"
               onPress={() => { const pid = current.id; closeSheet(); router.push(`/product/${pid}` as any); }}
@@ -149,7 +148,7 @@ export default function Scanner() {
       <View style={[styles.container, styles.center, { padding: spacing.xl }]}>
         <Icon name="camera-off-outline" size={56} color={colors.muted} />
         <Text style={styles.permTitle}>Permesso fotocamera richiesto</Text>
-        <Text style={styles.permDesc}>Per scansionare i codici a barre serve l'accesso alla fotocamera.</Text>
+        <Text style={styles.permDesc}>Per scansionare i codici a barre serve l&apos;accesso alla fotocamera.</Text>
         <Pressable testID="grant-permission" onPress={requestPermission} style={styles.primaryBtn}>
           <Text style={styles.primaryBtnText}>Concedi permesso</Text>
         </Pressable>
@@ -168,14 +167,17 @@ export default function Scanner() {
         <CameraView
           style={StyleSheet.absoluteFill}
           facing="back"
+          autofocus="on"
+          enableTorch={torch}
+          zoom={zoomed ? 0.25 : 0}
           onBarcodeScanned={scanning ? onBarcode : undefined}
-          barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "qr"] }}
+          barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
         />
       ) : (
         <View style={[StyleSheet.absoluteFill, { backgroundColor: "#111", alignItems: "center", justifyContent: "center" }]}>
           <Icon name="camera" size={60} color="#555" />
           <Text style={{ color: "#aaa", marginTop: 12 }}>Anteprima fotocamera non disponibile su web</Text>
-          <Text style={{ color: "#777", marginTop: 4, fontSize: 12 }}>Usa l'inserimento manuale</Text>
+          <Text style={{ color: "#777", marginTop: 4, fontSize: 12 }}>Usa l&apos;inserimento manuale</Text>
         </View>
       )}
 
@@ -183,7 +185,7 @@ export default function Scanner() {
       <View style={[StyleSheet.absoluteFill, { pointerEvents: "box-none" }]}>
         <View style={[styles.topBar, { paddingTop: insets.top + spacing.sm }]}>
           <Text style={styles.topText}>Scansiona codice a barre</Text>
-          <Text style={styles.topSub}>Allinea il codice al rettangolo</Text>
+          <Text style={styles.topSub}>Tieni il codice orizzontale a 10–20 cm</Text>
         </View>
 
         <View style={styles.frameWrap}>
@@ -192,14 +194,31 @@ export default function Scanner() {
             <View style={[styles.corner, styles.cTR]} />
             <View style={[styles.corner, styles.cBL]} />
             <View style={[styles.corner, styles.cBR]} />
+            <View style={styles.scanLine} />
           </View>
         </View>
 
         <View style={[styles.bottomBar, { paddingBottom: insets.bottom + spacing.md }]}>
-          <Pressable testID="manual-entry-btn" onPress={() => setManualOpen(true)} style={styles.manualBtn}>
-            <Icon name="keyboard-outline" size={22} color={colors.onBrandPrimary} />
-            <Text style={styles.manualBtnText}>Inserimento manuale</Text>
-          </Pressable>
+          <View style={styles.toolsRow}>
+            <Pressable
+              testID="torch-toggle"
+              onPress={() => setTorch((t) => !t)}
+              style={[styles.toolBtn, torch && styles.toolBtnActive]}
+            >
+              <Icon name={torch ? "flashlight" : "flashlight-off"} size={22} color={torch ? colors.onBrandPrimary : "#FFFFFF"} />
+            </Pressable>
+            <Pressable testID="manual-entry-btn" onPress={() => setManualOpen(true)} style={styles.manualBtn}>
+              <Icon name="keyboard-outline" size={22} color={colors.onBrandPrimary} />
+              <Text style={styles.manualBtnText}>Inserimento manuale</Text>
+            </Pressable>
+            <Pressable
+              testID="zoom-toggle"
+              onPress={() => setZoomed((z) => !z)}
+              style={[styles.toolBtn, zoomed && styles.toolBtnActive]}
+            >
+              <Icon name={zoomed ? "magnify-minus-outline" : "magnify-plus-outline"} size={22} color={zoomed ? colors.onBrandPrimary : "#FFFFFF"} />
+            </Pressable>
+          </View>
         </View>
       </View>
 
@@ -253,7 +272,17 @@ const styles = StyleSheet.create({
   topText: { color: "#fff", fontSize: 18, fontWeight: "800" },
   topSub: { color: "rgba(255,255,255,0.75)", fontSize: 13 },
   frameWrap: { flex: 1, alignItems: "center", justifyContent: "center" },
-  frame: { width: 260, height: 180 },
+  frame: { width: 300, height: 160 },
+  scanLine: {
+    position: "absolute", left: 16, right: 16, top: "50%", height: 2,
+    backgroundColor: colors.brandPrimary, opacity: 0.8,
+  },
+  toolsRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  toolBtn: {
+    width: 48, height: 48, borderRadius: radius.pill,
+    backgroundColor: "rgba(0,0,0,0.55)", alignItems: "center", justifyContent: "center",
+  },
+  toolBtnActive: { backgroundColor: colors.brandPrimary },
   corner: { position: "absolute", width: 28, height: 28, borderColor: colors.brandPrimary },
   cTL: { top: 0, left: 0, borderLeftWidth: 4, borderTopWidth: 4, borderTopLeftRadius: 10 },
   cTR: { top: 0, right: 0, borderRightWidth: 4, borderTopWidth: 4, borderTopRightRadius: 10 },

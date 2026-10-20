@@ -105,10 +105,10 @@ export default function Home() {
                 <View key={p.id} style={styles.lowCard}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.lowName}>{p.name}</Text>
-                    <Text style={styles.lowMeta}>{p.location} · min {p.min_threshold}</Text>
+                    <Text style={styles.lowMeta}>{p.locations.length > 1 ? `${p.locations.length} ubicazioni` : p.locations[0]?.location} · min {p.min_threshold}</Text>
                   </View>
                   <View style={styles.qtyBadge}>
-                    <Text style={styles.qtyBadgeText}>{p.quantity}</Text>
+                    <Text style={styles.qtyBadgeText}>{p.total_quantity}</Text>
                   </View>
                 </View>
               ))}
