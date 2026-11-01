@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { View, Text, StyleSheet, Pressable, SectionList, ActivityIndicator } from "react-native";
+import { View, Text, StyleSheet, Pressable, SectionList, ActivityIndicator, TextInput } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useQuery } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import { useActiveStock } from "@/src/stock-context";
 import { colors, radius, spacing } from "@/src/theme";
 import { QuantityStepper } from "@/src/components/QuantityStepper";
 import { exportOrderPdf, suggestedQty } from "@/src/utils/order-pdf";
+import { storage } from "@/src/utils/storage";
 
 const NO_SUPPLIER = "Senza fornitore";
 
@@ -23,6 +24,19 @@ export default function OrderExport() {
   const [qty, setQty] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  // Customer printed on the PDF, remembered per stock.
+  const [client, setClient] = useState("");
+  const clientKey = stockId ? `order_client_${stockId}` : null;
+
+  useEffect(() => {
+    if (!clientKey) return;
+    storage.getItem(clientKey, "").then((v) => setClient(typeof v === "string" ? v : ""));
+  }, [clientKey]);
+
+  const changeClient = (v: string) => {
+    setClient(v);
+    if (clientKey) storage.setItem(clientKey, v);
+  };
 
   useEffect(() => {
     if (!reorder.data) return;
@@ -52,7 +66,6 @@ export default function OrderExport() {
       .map((p) => ({
         name: p.name,
         supplier_code: p.supplier_code,
-        internal_code: p.internal_code,
         barcode: p.barcode,
         unit: p.unit,
         qty: qty[p.id],
@@ -64,7 +77,7 @@ export default function OrderExport() {
     }
     setBusy(title);
     try {
-      await exportOrderPdf(activeStock?.name || "", title, lines);
+      await exportOrderPdf(client.trim(), title, lines);
     } catch {
       setToast("Esportazione PDF non riuscita");
       setTimeout(() => setToast(null), 2500);
@@ -86,6 +99,26 @@ export default function OrderExport() {
         <View style={{ flex: 1 }}>
           <Text style={styles.h1}>Ordini fornitori</Text>
           <Text style={styles.sub} numberOfLines={1}>{activeStock?.name}</Text>
+        </View>
+      </View>
+
+      <View style={styles.clientBox}>
+        <Text style={styles.clientLabel}>Cliente sul PDF</Text>
+        <View style={styles.clientRow}>
+          <Icon name="account-outline" size={18} color={colors.muted} />
+          <TextInput
+            testID="order-client-input"
+            value={client}
+            onChangeText={changeClient}
+            placeholder="Nome cliente / ragione sociale"
+            placeholderTextColor={colors.muted}
+            style={styles.clientInput}
+          />
+          {client.length > 0 && (
+            <Pressable testID="order-client-clear" onPress={() => changeClient("")} hitSlop={8}>
+              <Icon name="close-circle" size={18} color={colors.muted} />
+            </Pressable>
+          )}
         </View>
       </View>
 
@@ -162,6 +195,14 @@ const styles = StyleSheet.create({
   h1: { fontSize: 18, fontWeight: "800", color: colors.onSurface },
   sub: { color: colors.muted, fontSize: 12, marginTop: 2 },
   center: { flex: 1, alignItems: "center", justifyContent: "center", gap: spacing.sm },
+  clientBox: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, gap: spacing.xs },
+  clientLabel: { fontSize: 13, fontWeight: "700", color: colors.onSurface },
+  clientRow: {
+    flexDirection: "row", alignItems: "center", gap: spacing.sm, height: 48,
+    backgroundColor: colors.surfaceTertiary, borderRadius: radius.md, paddingHorizontal: spacing.md,
+    borderWidth: 1, borderColor: colors.border,
+  },
+  clientInput: { flex: 1, height: "100%", fontSize: 15, color: colors.onSurface },
   emptyT: { fontSize: 16, fontWeight: "700", color: colors.onSurface },
   sectionHeader: {
     flexDirection: "row", alignItems: "center", gap: spacing.md,

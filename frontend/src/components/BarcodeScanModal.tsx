@@ -9,10 +9,14 @@ import * as Haptics from "expo-haptics";
 import { colors, radius, spacing } from "@/src/theme";
 
 export const BARCODE_TYPES = ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39", "code93", "itf14", "codabar"] as const;
+// Supplier labels may also carry 2D codes and alphanumeric values.
+const ALL_TYPES = [...BARCODE_TYPES, "qr", "datamatrix", "pdf417", "aztec"] as const;
 
 type Props = {
   visible: boolean;
   title?: string;
+  // Accept 2D codes and a full keyboard for alphanumeric codes (e.g. supplier codes).
+  alphanumeric?: boolean;
   // Keep the camera open after each read (used by "Carico merce").
   continuous?: boolean;
   // Feedback line shown over the camera (e.g. "+1 Latte Intero").
@@ -21,7 +25,7 @@ type Props = {
   onClose: () => void;
 };
 
-export function BarcodeScanModal({ visible, title = "Scansiona codice", continuous, message, onCode, onClose }: Props) {
+export function BarcodeScanModal({ visible, title = "Scansiona codice", alphanumeric, continuous, message, onCode, onClose }: Props) {
   const insets = useSafeAreaInsets();
   const [permission, requestPermission] = useCameraPermissions();
   const [torch, setTorch] = useState(false);
@@ -60,7 +64,7 @@ export function BarcodeScanModal({ visible, title = "Scansiona codice", continuo
             autofocus="on"
             enableTorch={torch}
             onBarcodeScanned={visible ? onScan : undefined}
-            barcodeScannerSettings={{ barcodeTypes: [...BARCODE_TYPES] }}
+            barcodeScannerSettings={{ barcodeTypes: alphanumeric ? [...ALL_TYPES] : [...BARCODE_TYPES] }}
           />
         ) : (
           <View style={[StyleSheet.absoluteFill, styles.noCam]}>
@@ -115,7 +119,8 @@ export function BarcodeScanModal({ visible, title = "Scansiona codice", continuo
               onChangeText={setManual}
               placeholder="Oppure digita il codice"
               placeholderTextColor={colors.muted}
-              keyboardType="number-pad"
+              keyboardType={alphanumeric ? "default" : "number-pad"}
+              autoCapitalize={alphanumeric ? "characters" : "none"}
               returnKeyType="done"
               onSubmitEditing={() => emit(manual)}
               style={styles.input}

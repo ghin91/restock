@@ -37,7 +37,7 @@ export default function ProductDetails() {
     enabled: !!activeStock,
   });
   const [transferOpen, setTransferOpen] = useState(false);
-  const [scanOpen, setScanOpen] = useState(false);
+  const [scanTarget, setScanTarget] = useState<"barcode" | "supplier_code" | null>(null);
 
   const [form, setForm] = useState<Partial<Product>>({
     name: "",
@@ -196,7 +196,7 @@ export default function ProductDetails() {
                 </Pressable>
               )}
             </View>
-            <Pressable testID="barcode-scan-btn" onPress={() => setScanOpen(true)} style={styles.scanBtn}>
+            <Pressable testID="barcode-scan-btn" onPress={() => setScanTarget("barcode")} style={styles.scanBtn}>
               <Icon name="barcode-scan" size={22} color={colors.onBrandPrimary} />
             </Pressable>
           </View>
@@ -218,15 +218,27 @@ export default function ProductDetails() {
           </View>
           <View style={{ flex: 1 }}>
             <Field label="Codice fornitore">
-              <TextInput
-                testID="supplier-code-input"
-                value={form.supplier_code ?? ""}
-                onChangeText={(v) => set("supplier_code", v)}
-                placeholder="es. RS-4471"
-                placeholderTextColor={colors.muted}
-                autoCapitalize="characters"
-                style={styles.input}
-              />
+              <View style={styles.barcodeRow}>
+                <View style={[styles.input, styles.barcodeInputWrap]}>
+                  <TextInput
+                    testID="supplier-code-input"
+                    value={form.supplier_code ?? ""}
+                    onChangeText={(v) => set("supplier_code", v)}
+                    placeholder="es. RS-4471"
+                    placeholderTextColor={colors.muted}
+                    autoCapitalize="characters"
+                    style={styles.barcodeInput}
+                  />
+                  {!!form.supplier_code && (
+                    <Pressable testID="supplier-code-clear" onPress={() => set("supplier_code", "")} hitSlop={8}>
+                      <Icon name="close-circle" size={18} color={colors.muted} />
+                    </Pressable>
+                  )}
+                </View>
+                <Pressable testID="supplier-code-scan-btn" onPress={() => setScanTarget("supplier_code")} style={styles.scanBtn}>
+                  <Icon name="barcode-scan" size={22} color={colors.onBrandPrimary} />
+                </Pressable>
+              </View>
             </Field>
           </View>
         </View>
@@ -369,10 +381,11 @@ export default function ProductDetails() {
         </Pressable>
       </Modal>
       <BarcodeScanModal
-        visible={scanOpen}
-        title="Associa codice a barre"
-        onCode={(code) => set("barcode", code)}
-        onClose={() => setScanOpen(false)}
+        visible={scanTarget !== null}
+        title={scanTarget === "supplier_code" ? "Leggi codice fornitore" : "Associa codice a barre"}
+        alphanumeric={scanTarget === "supplier_code"}
+        onCode={(code) => { if (scanTarget) set(scanTarget, code); }}
+        onClose={() => setScanTarget(null)}
       />
       {existing.data && (
         <TransferModal

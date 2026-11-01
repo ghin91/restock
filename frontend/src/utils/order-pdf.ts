@@ -5,7 +5,6 @@ import * as Sharing from "expo-sharing";
 export type OrderLine = {
   name: string;
   supplier_code?: string | null;
-  internal_code?: string | null;
   barcode?: string | null;
   unit: string;
   qty: number;
@@ -17,7 +16,7 @@ const esc = (s: string) =>
 // Suggested reorder quantity: bring the total up to twice the minimum threshold.
 export const suggestedQty = (total: number, min: number) => Math.max(1, min * 2 - total);
 
-function buildHtml(stockName: string, supplier: string, lines: OrderLine[]) {
+function buildHtml(client: string, supplier: string, lines: OrderLine[]) {
   const date = new Date().toLocaleDateString("it-IT");
   const rows = lines
     .map(
@@ -25,7 +24,6 @@ function buildHtml(stockName: string, supplier: string, lines: OrderLine[]) {
         <td>${i + 1}</td>
         <td class="code-col"><b>${esc(l.supplier_code || "—")}</b></td>
         <td>${esc(l.name)}${l.barcode ? `<div class="sub">EAN ${esc(l.barcode)}</div>` : ""}</td>
-        <td class="code-col">${esc(l.internal_code || "—")}</td>
         <td class="num qty">${l.qty}</td>
         <td>${esc(l.unit)}</td>
       </tr>`,
@@ -50,11 +48,11 @@ function buildHtml(stockName: string, supplier: string, lines: OrderLine[]) {
     <h1>Ordine di acquisto</h1>
     <div class="meta">
       <div><b>Fornitore:</b> ${esc(supplier)}</div>
-      <div><b>Cliente:</b> ${esc(stockName)}</div>
+      ${client ? `<div><b>Cliente:</b> ${esc(client)}</div>` : ""}
       <div><b>Data:</b> ${date}</div>
     </div>
     <table>
-      <thead><tr><th>#</th><th>Cod. fornitore</th><th>Descrizione</th><th>Cod. interno</th><th class="num">Quantità</th><th>Unità</th></tr></thead>
+      <thead><tr><th>#</th><th>Cod. fornitore</th><th>Descrizione</th><th class="num">Quantità</th><th>Unità</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
     <div class="foot"><b>Righe:</b> ${lines.length} &nbsp;·&nbsp; <b>Pezzi totali:</b> ${totalPieces}</div>
@@ -62,8 +60,8 @@ function buildHtml(stockName: string, supplier: string, lines: OrderLine[]) {
   </body></html>`;
 }
 
-export async function exportOrderPdf(stockName: string, supplier: string, lines: OrderLine[]) {
-  const html = buildHtml(stockName, supplier, lines);
+export async function exportOrderPdf(client: string, supplier: string, lines: OrderLine[]) {
+  const html = buildHtml(client, supplier, lines);
   if (Platform.OS === "web") {
     // Browser print dialog lets the user "Save as PDF".
     await Print.printAsync({ html });
